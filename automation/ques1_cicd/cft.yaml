@@ -1,0 +1,137 @@
+AWSTemplateFormatVersion: '2010-09-09' 
+Description: '' 
+Parameters: 
+  SNSTopicName:  
+    AllowedPattern: '[a-zA-Z_0-9-]+' 
+    ConstraintDescription: "Must include only uppercase and lowercase ASCII letters, numbers, underscores, and hyphens, and must be between 1 and 256 characters long" 
+    Default: "vikas-Topic" 
+    Description: "Name of the SNS Topic" 
+    MaxLength: '256' 
+    MinLength: '1' 
+    Type: "String" 
+  SNSDisplayName:  
+    ConstraintDescription: "Must be between 1 and 100 characters long" 
+    Default: "sns-sns" 
+    Description: "Display Name of the SNS Topic" 
+    MaxLength: '100' 
+    MinLength: '1' 
+    Type: "String" 
+  SubscriptionEmail: 
+    Description: "Email for notifications" 
+    AllowedPattern: '[^\s@]+@[^\s@]+\.[^\s@]+' 
+    ConstraintDescription: "You should enter a valid email" 
+    MaxLength: '254' 
+    MinLength: '1' 
+    Default: "vikas.yadav@quantiphi.com" 
+    Type: "String" 
+  LambdaFunctionName: 
+    Description: "Name of Lambda function" 
+    Default: "vikasSnsLambda" 
+    AllowedPattern: '(arn:(aws[a-zA-Z-]*)?:lambda:)?([a-z]{2}(-gov)?-[a-z]+-\d{1}:)?(\d{12}:)?(function:)?([a-zA-Z0-9-_]+)(:(\$LATEST|[a-zA-Z0-9-_]+))?' 
+    ConstraintDescription: "Must be between 1 and 140 characters long" 
+    MaxLength: '140' 
+    MinLength: '1' 
+    Type: "String" 
+  LambdaHandlerName: 
+    Description: "Handler of Lambda function" 
+    Default: "lambda_email.lambda_handler" 
+    AllowedPattern: '[^\s]+' 
+    ConstraintDescription: "Must be between 1 and 128 characters long" 
+    MaxLength: '128' 
+    MinLength: '1' 
+    Type: "String" 
+  EventRuleName: 
+    Description: "Name of Scheduled Event Rule" 
+    Default: "event-event" 
+    AllowedPattern: '[\.\-_A-Za-z0-9]+' 
+    ConstraintDescription: "Must be between 1 and 64 characters long" 
+    MaxLength: '64' 
+    MinLength: '1' 
+    Type: "String" 
+
+
+
+Resources: 
+  SNSTopic: 
+    Type: AWS::SNS::Topic 
+    Properties:  
+      DisplayName: !Ref SNSDisplayName 
+      TopicName: !Ref SNSTopicName 
+  SNSSubscription: 
+    Type: AWS::SNS::Subscription 
+    Properties: 
+      Endpoint: !Ref SubscriptionEmail 
+      Protocol: email 
+      TopicArn: !Ref SNSTopic 
+  LambdaMailer: 
+    Type: AWS::Lambda::Function 
+    Properties: 
+      Code: 
+        S3Bucket: "vikas-bucket" 
+        S3Key: "lambda_email.zip" 
+      Role : "arn:aws:iam::488599217855:role/service-role/codebuild-lambda-pipeline-build-service-role" 
+      Description: "Lambda function to send a mail \"Hello World\"" 
+      Environment: 
+        Variables:  
+          TopicName: !Ref SNSTopic 
+      FunctionName: !Ref LambdaFunctionName 
+      Handler: !Ref LambdaHandlerName 
+      Runtime: "python3.7" 
+      Tags:  
+        -  
+          Key: "Email" 
+          Value: "vikas.yadav@quantiphi.com" 
+        -  
+          Key: "office-time" 
+          Value: "Mumbai-10" 
+        -  
+          Key: "Name" 
+          Value: "vikas" 
+        -  
+          Key: "Project" 
+          Value: "Mumbai_PE_training" 
+        -  
+          Key: "Username" 
+          Value: "vikas.yadav" 
+  SNSPolicy: 
+    Type: AWS::SNS::TopicPolicy 
+    Properties: 
+      PolicyDocument: 
+        Id: "SNSPolicyId" 
+        Version: '2012-10-17' 
+        Statement: 
+        - Sid: "sns" 
+          Effect: "Allow" 
+          Principal: "*" 
+          Action: 
+            - sns:Publish 
+          Resource: 
+            Fn::GetAtt:  
+              - "LambdaMailer" 
+              - "Arn" 
+      Topics: 
+      - !Ref SNSTopic 
+  ScheduledEvent: 
+    Type: AWS::Events::Rule 
+    Properties:  
+      Description: "A CloudWatch event which triggers a Lambda function" 
+      Name: "KishanEvent" 
+      ScheduleExpression: cron(30 4 * * ? *) # 4:30 AM UTC == 9:00 AM IST 
+      State: "ENABLED" 
+      Targets:  
+        -  
+          Arn:  
+            Fn::GetAtt:  
+              - "LambdaMailer" 
+              - "Arn" 
+          Id: "TargetFunction" 
+  PermissionForEventsToInvokeLambda:  
+    Type: AWS::Lambda::Permission 
+    Properties:  
+      FunctionName: !Ref "LambdaMailer" 
+      Action: "lambda:InvokeFunction" 
+      Principal: "events.amazonaws.com" 
+      SourceArn:  
+        Fn::GetAtt:  
+          - "ScheduledEvent" 
+          - "Arn" 
